@@ -19,6 +19,20 @@ def kos(*komut, kontrol=True):
     return subprocess.run(komut, check=kontrol, capture_output=True, text=True)
 
 
+def ac(udid, adres, deneme=4):
+    """openurl ilk açılışta zaman aşımına düşebiliyor (iPad, 2 Eki koşusu); tekrar dene."""
+    son = None
+    for i in range(deneme):
+        try:
+            return subprocess.run(["xcrun", "simctl", "openurl", udid, adres], check=True,
+                                  capture_output=True, text=True, timeout=150)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            son = e
+            print(f"  openurl denemesi {i + 1} düştü, 15 sn sonra yeniden", flush=True)
+            time.sleep(15)
+    raise son
+
+
 def ad_yap(adres):
     yol = re.sub(r"^https?://", "", adres).strip("/")
     return re.sub(r"[^A-Za-z0-9]+", "_", yol) or "kok"
@@ -66,24 +80,27 @@ def main():
             kos("xcrun", "simctl", "bootstatus", udid, "-b")
             kos("xcrun", "simctl", "status_bar", udid, "override", "--time", "9:41",
                 "--batteryState", "charged", "--batteryLevel", "100", kontrol=False)
-            # Safari'nin ilk açılışı uzun sürer; boş sayfayla ısındır
-            kos("xcrun", "simctl", "openurl", udid, "about:blank", kontrol=False)
-            time.sleep(10)
+            # Safari'nin ilk açılışı uzun sürer ve ilk gerçek sayfada bir tanıtım
+            # balonu çıkar (2 Eki iPhone görüntüsü); yabancı bir sayfayla ısındır.
+            print("+ ısınma: https://example.com", flush=True)
+            ac(udid, "https://example.com")
+            time.sleep(15)
             for adres in adresler:
                 kayit = dict(kayit_temel, istenen_adres=adres)
                 try:
-                    kos("xcrun", "simctl", "openurl", udid, adres)
+                    print("+ openurl", adres, flush=True)
+                    ac(udid, adres)
                     time.sleep(BEKLE)
                     dosya = f"{tur}-safari_{ad_yap(adres)}.png"
                     kos("xcrun", "simctl", "io", udid, "screenshot", "--type=png",
                         os.path.join(CIKTI, dosya))
                     kayit["goruntu"] = dosya
-                except subprocess.CalledProcessError as e:
-                    kayit["hata"] = f"{e.cmd}: {e.stderr.strip()[:300]}"
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+                    kayit["hata"] = f"{e.cmd}: {(e.stderr or '').strip()[:300] if isinstance(e.stderr, str) else 'zaman aşımı'}"
                 print(json.dumps(kayit, ensure_ascii=False), flush=True)
                 ozet.append(kayit)
-        except subprocess.CalledProcessError as e:
-            ozet.append(dict(kayit_temel, hata=f"{e.cmd}: {e.stderr.strip()[:300]}"))
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            ozet.append(dict(kayit_temel, hata=f"{e.cmd}: {e.stderr.strip()[:300] if isinstance(e.stderr, str) else 'zaman aşımı'}"))
         finally:
             kos("xcrun", "simctl", "shutdown", udid, kontrol=False)
     with open(os.path.join(CIKTI, "ozet-simulator.json"), "w", encoding="utf-8") as f:

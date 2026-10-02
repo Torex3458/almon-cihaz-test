@@ -56,7 +56,13 @@ try {
     }
   });
 } catch (x) {}
+// scrollWidth taşması kırpılmış olabilir (overflow-x: hidden/clip); kullanıcı
+// gerçekten yana kaydırabiliyor mu, ayrıca denenir.
+var y0 = window.scrollY, x0 = window.scrollX, kaydi = 0;
+try { window.scrollTo(400, y0); kaydi = window.scrollX; window.scrollTo(x0, y0); } catch (x) {}
 return {
+  yatay_kaydirilabilir: kaydi > 0,
+  overflow_x: getComputedStyle(d).overflowX + ' / ' + (b ? getComputedStyle(b).overflowX : '-'),
   baslik: document.title,
   adres: location.href,
   readyState: document.readyState,
