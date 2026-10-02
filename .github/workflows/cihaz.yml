@@ -1,0 +1,59 @@
+name: cihaz
+
+on:
+  workflow_dispatch:
+    inputs:
+      adresler:
+        description: "Açılacak adresler (boşlukla ayrılmış)"
+        required: true
+        default: "https://almon.ai/tr https://almon.ai/tr/sss"
+
+permissions:
+  contents: read
+
+jobs:
+  mac:
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      CIKTI: cikti
+      ADRESLER: ${{ inputs.adresler }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Makine bilgisi
+        run: |
+          sw_vers
+          xcodebuild -version
+          system_profiler SPDisplaysDataType | grep -i -E "resolution|display" || true
+          /usr/bin/defaults read /Applications/Safari.app/Contents/Info CFBundleShortVersionString || true
+          xcrun simctl list runtimes
+
+      - name: Safari uzaktan sürüşü aç
+        run: |
+          sudo safaridriver --enable
+          python3 -m pip install --quiet --break-system-packages selenium || python3 -m pip install --quiet selenium
+
+      - name: Mac Safari (1440x900, 1920x1080)
+        id: safari
+        continue-on-error: true
+        run: python3 safari.py $ADRESLER
+
+      - name: iPhone ve iPad simülatörü (Safari)
+        id: sim
+        continue-on-error: true
+        run: python3 simulator.py $ADRESLER
+
+      - name: Çıktıyı yükle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cihaz-goruntuleri
+          path: cikti/
+          if-no-files-found: warn
+
+      - name: Sonuç
+        if: always()
+        run: |
+          echo "safari=${{ steps.safari.outcome }} sim=${{ steps.sim.outcome }}"
+          test "${{ steps.safari.outcome }}" = "success" && test "${{ steps.sim.outcome }}" = "success"
